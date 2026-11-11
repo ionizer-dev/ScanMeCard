@@ -12,7 +12,7 @@ OUTPUT_DIR = Path("output")
 PHOTO_DIR = Path("photos")
 DEFAULT_COLOR = "#1a1a1a"
 CARDS_DIR = Path("docs/cards")
-BASE_URL = "https://ionizer_dev.github.io/ScanMeCard/cards/"
+BASE_URL = "https://ionizer-dev.github.io/ScanMeCard/cards/"
 CARD_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
