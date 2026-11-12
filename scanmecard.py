@@ -1,7 +1,9 @@
+import base64
 import csv
+import io
 import re
-from html import escape
 import sys
+from html import escape
 from pathlib import Path
 
 import qrcode
@@ -13,6 +15,7 @@ PHOTO_DIR = Path("photos")
 DEFAULT_COLOR = "#1a1a1a"
 CARDS_DIR = Path("docs/cards")
 BASE_URL = "https://ionizer-dev.github.io/ScanMeCard/cards/"
+
 CARD_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -50,52 +53,6 @@ CARD_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
-
-def build_card_html(row, color, photo_b64, vcf_name):
-    def g(key):
-        return row.get(key, "").strip()
-
-    first, last = g("first_name"), g("last_name")
-    name = f"{first} {last}".strip()
-    subtitle = ", ".join(x for x in [g("job_title"), g("organization")] if x)
-
-    if photo_b64:
-        photo = f'<img class="photo" src="data:image/jpeg;base64,{photo_b64}" alt="{escape(name)}">'
-    else:
-        initials = (first[:1] + last[:1]).upper()
-        photo = f'<div class="photo-box"><div class="photo initials">{escape(initials)}</div></div>'
-
-    def item(label, value_html):
-        return f'<div class="row"><small>{label}</small>{value_html}</div>'
-
-    rows = []
-    if g("phone"):
-        digits = re.sub(r"[^\d+]", "", g("phone"))
-        rows.append(item("Phone", f'<a href="tel:{digits}">{escape(g("phone"))}</a>'))
-    if g("email"):
-        rows.append(item("Email", f'<a href="mailto:{escape(g("email"))}">{escape(g("email"))}</a>'))
-    if g("website"):
-        site = g("website")
-        if not site.lower().startswith("http"):
-            site = "https://" + site
-        rows.append(item("Website", f'<a href="{escape(site)}">{escape(g("website"))}</a>'))
-    address = ", ".join(x for x in [g("street"), g("city"), g("postal_code"), g("country")] if x)
-    if address:
-        rows.append(item("Address", escape(address)))
-    if g("note"):
-        rows.append(item("Note", escape(g("note"))))
-
-    page = CARD_TEMPLATE
-    for token, value in {
-        "__NAME__": escape(name),
-        "__COLOR__": color,
-        "__PHOTO__": photo,
-        "__SUBTITLE__": escape(subtitle),
-        "__ROWS__": "".join(rows),
-        "__VCF__": vcf_name,
-    }.items():
-        page = page.replace(token, value)
-    return page
 
 def esc(value):
     """Escape characters that have special meaning in a vCard."""
@@ -148,6 +105,79 @@ def slugify(text):
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_") or "contact"
 
 
+def photo_to_base64(photo_path, size=256):
+    """Make a small square JPEG of the photo and encode it as text."""
+    img = Image.open(photo_path).convert("RGB")
+    w, h = img.size
+    side = min(w, h)
+    img = img.crop(((w - side) // 2, (h - side) // 2,
+                    (w + side) // 2, (h + side) // 2)).resize((size, size))
+    buffer = io.BytesIO()
+    img.save(buffer, "JPEG", quality=85)
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
+def fold(line):
+    """vCard lines should be at most 75 characters; longer ones are folded."""
+    return "\r\n ".join(line[i:i + 74] for i in range(0, len(line), 74))
+
+
+def save_vcf(vcard, photo_path, path):
+    lines = vcard.split("\n")
+    if photo_path:
+        lines.insert(-1, "PHOTO;ENCODING=b;TYPE=JPEG:" + photo_to_base64(photo_path))
+    text = "\r\n".join(fold(line) for line in lines) + "\r\n"
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        f.write(text)
+
+
+def build_card_html(row, color, photo_b64, vcf_name):
+    def g(key):
+        return row.get(key, "").strip()
+
+    first, last = g("first_name"), g("last_name")
+    name = f"{first} {last}".strip()
+    subtitle = ", ".join(x for x in [g("job_title"), g("organization")] if x)
+
+    if photo_b64:
+        photo = f'<img class="photo" src="data:image/jpeg;base64,{photo_b64}" alt="{escape(name)}">'
+    else:
+        initials = (first[:1] + last[:1]).upper()
+        photo = f'<div class="photo-box"><div class="photo initials">{escape(initials)}</div></div>'
+
+    def item(label, value_html):
+        return f'<div class="row"><small>{label}</small>{value_html}</div>'
+
+    rows = []
+    if g("phone"):
+        digits = re.sub(r"[^\d+]", "", g("phone"))
+        rows.append(item("Phone", f'<a href="tel:{digits}">{escape(g("phone"))}</a>'))
+    if g("email"):
+        rows.append(item("Email", f'<a href="mailto:{escape(g("email"))}">{escape(g("email"))}</a>'))
+    if g("website"):
+        site = g("website")
+        if not site.lower().startswith("http"):
+            site = "https://" + site
+        rows.append(item("Website", f'<a href="{escape(site)}">{escape(g("website"))}</a>'))
+    address = ", ".join(x for x in [g("street"), g("city"), g("postal_code"), g("country")] if x)
+    if address:
+        rows.append(item("Address", escape(address)))
+    if g("note"):
+        rows.append(item("Note", escape(g("note"))))
+
+    page = CARD_TEMPLATE
+    for token, value in {
+        "__NAME__": escape(name),
+        "__COLOR__": color,
+        "__PHOTO__": photo,
+        "__SUBTITLE__": escape(subtitle),
+        "__ROWS__": "".join(rows),
+        "__VCF__": vcf_name,
+    }.items():
+        page = page.replace(token, value)
+    return page
+
+
 def add_photo(qr_img, photo_path):
     """Place a round photo in the centre of the QR code."""
     qr_img = qr_img.convert("RGB")
@@ -175,10 +205,10 @@ def add_photo(qr_img, photo_path):
     return qr_img
 
 
-def make_qr(vcard, color, path, photo_path=None):
+def make_qr(data, color, path, photo_path=None):
     qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H,
                        box_size=12, border=3)
-    qr.add_data(vcard)
+    qr.add_data(data)
     qr.make(fit=True)
     img = qr.make_image(fill_color=color, back_color="white").convert("RGB")
     if photo_path:
@@ -191,12 +221,17 @@ def main():
         sys.exit("contacts.csv not found. Create it first.")
 
     OUTPUT_DIR.mkdir(exist_ok=True)
+    CARDS_DIR.mkdir(parents=True, exist_ok=True)
     count = 0
+
     with INPUT_FILE.open(newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             name = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
             if not name:
                 continue
+
+            slug = slugify(name)
+            color = valid_color(row.get("color", ""))
 
             photo_path = None
             photo_name = row.get("photo", "").strip()
@@ -207,12 +242,21 @@ def main():
                 else:
                     print(f"Photo not found for {name}: {candidate}")
 
-            out = OUTPUT_DIR / f"{slugify(name)}.png"
-            make_qr(build_vcard(row), valid_color(row.get("color", "")), out, photo_path)
-            print("Created", out)
+            # 1. contact file (with photo) that the Save button downloads
+            save_vcf(build_vcard(row), photo_path, CARDS_DIR / f"{slug}.vcf")
+
+            # 2. the card page that shows the photo and details
+            photo_b64 = photo_to_base64(photo_path, 300) if photo_path else ""
+            page = build_card_html(row, color, photo_b64, f"{slug}.vcf")
+            (CARDS_DIR / f"{slug}.html").write_text(page, encoding="utf-8")
+
+            # 3. the QR code that links to the card page
+            make_qr(BASE_URL + f"{slug}.html", color, OUTPUT_DIR / f"{slug}.png", photo_path)
+
+            print("Created card and QR for", name)
             count += 1
 
-    print(f"Done: {count} QR code(s) in '{OUTPUT_DIR}/'")
+    print(f"Done: {count} card(s). Pages are in '{CARDS_DIR}/', QR codes in '{OUTPUT_DIR}/'")
 
 
 if __name__ == "__main__":
