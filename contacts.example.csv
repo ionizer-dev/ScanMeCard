@@ -1,3 +1,2 @@
-first_name,last_name,organization,job_title,phone,email,website,street,city,postal_code,country,note,color,photo
-Jane,Wanjiku,Example Ltd,Designer,+254700000000,jane@example.com,https://example.com,Moi Avenue,Nairobi,00100,Kenya,Happy to connect!,#1a1a1a,jane.jpg
-Brian,Otieno,Strathmore University,Student,+254711111111,brian@example.com,,,Nairobi,,Kenya,,#0b5394,
+first_name,last_name,organization,job_title,phone,email,website,street,city,postal_code,country,note,color,photo,linkedin
+Jane,Wanjiku,Example Ltd,Designer,+254700000000,jane@example.com,https://example.com,,Nairobi,,Kenya,Happy to connect!,#0b5394,,

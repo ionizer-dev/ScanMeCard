@@ -3,3 +3,4 @@ output/
 photos/
 __pycache__/
 .venv/
+.vscode/
