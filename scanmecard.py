@@ -21,32 +21,47 @@ CARD_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="__COLOR__">
+<meta property="og:title" content="__NAME__">
+<meta property="og:description" content="__DESC__">
 <title>__NAME__</title>
 <style>
-  body { margin:0; font-family:Arial,Helvetica,sans-serif; background:#f2f2f2; }
-  .card { max-width:420px; margin:0 auto; min-height:100vh; background:#fff; text-align:center; }
-  .top { background:__COLOR__; height:120px; }
-  .photo { width:150px; height:150px; border-radius:50%; border:5px solid #fff;
-           object-fit:cover; margin-top:-75px; background:__COLOR__; }
-  .initials { display:flex; align-items:center; justify-content:center; color:#fff; font-size:48px; }
-  .photo-box { display:inline-block; }
-  h1 { margin:12px 16px 4px; font-size:26px; color:#222; }
-  .sub { color:#666; margin:0 16px 16px; }
-  .rows { text-align:left; padding:0 24px; }
-  .row { padding:12px 0; border-bottom:1px solid #eee; color:#333; word-break:break-word; }
-  .row small { display:block; color:#888; font-size:12px; }
-  .row a { color:__COLOR__; text-decoration:none; font-weight:bold; }
-  .save { display:block; margin:24px; padding:14px; background:__COLOR__; color:#fff;
-          text-decoration:none; border-radius:8px; font-size:18px; }
+  :root { --accent:__COLOR__; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#f2f2f2; color:#222;
+         font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+  .card { max-width:420px; margin:0 auto; min-height:100vh; background:#fff; }
+  .top { height:120px; background:var(--accent); }
+  .head { text-align:center; padding:0 24px 20px; }
+  .photo { display:block; width:148px; height:148px; border-radius:50%; margin:-74px auto 0;
+           border:5px solid #fff; object-fit:cover; background:var(--accent); }
+  .initials { display:flex; align-items:center; justify-content:center;
+              color:#fff; font-size:46px; letter-spacing:1px; }
+  h1 { margin:16px 0 6px; font-size:25px; line-height:1.25; font-weight:700; }
+  .title { margin:0; color:#555; font-size:15px; line-height:1.45; }
+  .org { margin:4px 0 0; color:#888; font-size:15px; }
+  .rows { padding:0 24px; }
+  .row { display:block; padding:15px 0; border-top:1px solid #ececec;
+         color:inherit; text-decoration:none; word-break:break-word; }
+  .row small { display:block; margin-bottom:4px; color:#8a8a8a; font-size:11px;
+               letter-spacing:.08em; text-transform:uppercase; }
+  .row span { font-size:16px; line-height:1.4; }
+  a.row span { color:var(--accent); font-weight:600; }
+  .save { display:block; margin:24px; padding:15px; background:var(--accent); color:#fff;
+          text-align:center; text-decoration:none; font-size:17px; font-weight:600;
+          border-radius:8px; }
 </style>
 </head>
 <body>
 <div class="card">
   <div class="top"></div>
-  __PHOTO__
-  <h1>__NAME__</h1>
-  <p class="sub">__SUBTITLE__</p>
-  <div class="rows">__ROWS__</div>
+  <div class="head">
+    __PHOTO__
+    <h1>__NAME__</h1>
+    __TITLE__
+    __ORG__
+  </div>
+  <div class="rows">__ITEMS__</div>
   <a class="save" href="__VCF__" download>Save contact</a>
 </div>
 </body>
@@ -135,45 +150,63 @@ def build_card_html(row, color, photo_b64, vcf_name):
     def g(key):
         return row.get(key, "").strip()
 
+    def link(value):
+        return value if value.lower().startswith("http") else "https://" + value
+
     first, last = g("first_name"), g("last_name")
     name = f"{first} {last}".strip()
-    subtitle = ", ".join(x for x in [g("job_title"), g("organization")] if x)
+    title, org = g("job_title"), g("organization")
 
     if photo_b64:
         photo = f'<img class="photo" src="data:image/jpeg;base64,{photo_b64}" alt="{escape(name)}">'
     else:
         initials = (first[:1] + last[:1]).upper()
-        photo = f'<div class="photo-box"><div class="photo initials">{escape(initials)}</div></div>'
+        photo = f'<div class="photo initials">{escape(initials)}</div>'
 
-    def item(label, value_html):
-        return f'<div class="row"><small>{label}</small>{value_html}</div>'
+    def item(label, value_html, href=None):
+        inner = f"<small>{label}</small><span>{value_html}</span>"
+        if href:
+            return f'<a class="row" href="{href}">{inner}</a>'
+        return f'<div class="row">{inner}</div>'
 
-    rows = []
-    if g("phone"):
-        digits = re.sub(r"[^\d+]", "", g("phone"))
-        rows.append(item("Phone", f'<a href="tel:{digits}">{escape(g("phone"))}</a>'))
-    if g("email"):
-        rows.append(item("Email", f'<a href="mailto:{escape(g("email"))}">{escape(g("email"))}</a>'))
-    if g("website"):
-        site = g("website")
-        if not site.lower().startswith("http"):
-            site = "https://" + site
-        rows.append(item("Website", f'<a href="{escape(site)}">{escape(g("website"))}</a>'))
+    items = []
+
+    phone = g("phone")
+    if phone:
+        items.append(item("Phone", escape(phone), "tel:" + re.sub(r"[^\d+]", "", phone)))
+
+    email = g("email")
+    if email:
+        items.append(item("Email", escape(email), "mailto:" + escape(email)))
+
+    website = g("website")
+    if website:
+        items.append(item("Website", escape(website), escape(link(website))))
+
+    linkedin = g("linkedin")
+    if linkedin:
+        items.append(item("LinkedIn", escape(linkedin), escape(link(linkedin))))
+
     address = ", ".join(x for x in [g("street"), g("city"), g("postal_code"), g("country")] if x)
     if address:
-        rows.append(item("Address", escape(address)))
-    if g("note"):
-        rows.append(item("Note", escape(g("note"))))
+        items.append(item("Address", escape(address)))
 
-    page = CARD_TEMPLATE
-    for token, value in {
+    if g("note"):
+        items.append(item("Note", escape(g("note"))))
+
+    replacements = {
         "__NAME__": escape(name),
+        "__DESC__": escape(" - ".join(x for x in [title, org] if x)),
         "__COLOR__": color,
         "__PHOTO__": photo,
-        "__SUBTITLE__": escape(subtitle),
-        "__ROWS__": "".join(rows),
+        "__TITLE__": f'<p class="title">{escape(title)}</p>' if title else "",
+        "__ORG__": f'<p class="org">{escape(org)}</p>' if org else "",
+        "__ITEMS__": "".join(items),
         "__VCF__": vcf_name,
-    }.items():
+    }
+
+    page = CARD_TEMPLATE
+    for token, value in replacements.items():
         page = page.replace(token, value)
     return page
 
@@ -242,15 +275,15 @@ def main():
                 else:
                     print(f"Photo not found for {name}: {candidate}")
 
-            # 1. contact file (with photo) that the Save button downloads
+           
             save_vcf(build_vcard(row), photo_path, CARDS_DIR / f"{slug}.vcf")
 
-            # 2. the card page that shows the photo and details
+            
             photo_b64 = photo_to_base64(photo_path, 300) if photo_path else ""
             page = build_card_html(row, color, photo_b64, f"{slug}.vcf")
             (CARDS_DIR / f"{slug}.html").write_text(page, encoding="utf-8")
 
-            # 3. the QR code that links to the card page
+           
             make_qr(BASE_URL + f"{slug}.html", color, OUTPUT_DIR / f"{slug}.png", photo_path)
 
             print("Created card and QR for", name)
